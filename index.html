@@ -82,6 +82,17 @@ button { font: inherit; color: inherit; }
 }
 .date { font-size: clamp(13px, 3.4vmin, 19px); font-weight: 500; margin-top: 2px; white-space: nowrap; }
 .when { min-width: 0; }
+.clock-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.sys { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding-top: 4px; flex: none; font: 600 12px var(--font-ui); color: var(--fg); opacity: .9; white-space: nowrap; }
+.net { font-family: var(--font-num); font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+.net.off { color: var(--danger); }
+.batt { display: inline-flex; align-items: center; gap: 5px; }
+.batt b { font-family: var(--font-num); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.batt-body { position: relative; width: 22px; height: 11px; border: 1.5px solid currentColor; border-radius: 3px; box-sizing: border-box; padding: 1px; display: inline-block; }
+.batt-body::after { content: ""; position: absolute; right: -4px; top: 3px; width: 2px; height: 3px; border-radius: 0 1px 1px 0; background: currentColor; }
+.batt-fill { display: block; height: 100%; width: 50%; border-radius: 1px; background: currentColor; }
+.batt.low { color: var(--danger); }
+.batt.charging { color: #5fe08a; }
 .sub-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; min-width: 0; flex-wrap: wrap; row-gap: 2px; }
 .sub-row .date { margin-top: 0; }
 .weather { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
@@ -279,7 +290,13 @@ button { font: inherit; color: inherit; }
 <main class="dash">
   <section class="rail glass" aria-label="計器">
     <div class="when">
-      <div class="clock" id="clock">17:38</div>
+      <div class="clock-row">
+        <div class="clock" id="clock">17:38</div>
+        <div class="sys" id="sys" hidden>
+          <span class="net" id="net">5G</span>
+          <span class="batt" id="batt"><i class="batt-body"><i class="batt-fill" id="battFill"></i></i><b id="battPct">--%</b></span>
+        </div>
+      </div>
       <div class="sub-row">
         <span class="date" id="date">10月21日（水）</span>
         <span class="weather" id="weather" aria-label="天気" hidden>
@@ -390,10 +407,32 @@ button { font: inherit; color: inherit; }
   }
   // iPhoneアプリ版の中で動いているとき（アプリ側が true にする）
   const NATIVE = !!window.__NATIVE_APP__;
+
+  // ---------- 通信の種類とバッテリー（アプリ版でアプリ側から届く） ----------
+  function showStatus(net, level, charging) {
+    const sys = document.getElementById("sys");
+    const netEl = document.getElementById("net"), batt = document.getElementById("batt");
+    netEl.textContent = net || "";
+    netEl.classList.toggle("off", net === "圏外");
+    netEl.hidden = !net;
+    if (level == null || level < 0) { batt.hidden = true; }
+    else {
+      batt.hidden = false;
+      const pct = Math.round(level * 100);
+      document.getElementById("battPct").textContent = pct + "%";
+      document.getElementById("battFill").style.width = Math.max(6, pct) + "%";
+      batt.classList.toggle("low", pct <= 20 && !charging);
+      batt.classList.toggle("charging", !!charging);
+    }
+    sys.hidden = false;
+  }
+  window.__nativeStatus = showStatus;
   function nativeOpen(app, web) {
     try { window.webkit.messageHandlers.native.postMessage({ type: "open", app: app || "", web: web || "" }); } catch (e) {}
   }
   const EMBEDDED = (function () { try { return window.top !== window.self; } catch (e) { return true; } })();
+  // claudeのプレビューでは配置確認用の見本を表示
+  if (!NATIVE && EMBEDDED) showStatus("5G", 0.82, false);
   // タップされたら、まずアプリを直接開く。アプリが開かなかったときだけWeb版へ。
   function openDirect(e) {
     const a = e.currentTarget, scheme = a.dataset.app;

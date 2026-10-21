@@ -1,6 +1,8 @@
 import UIKit
 import WebKit
 import CoreLocation
+import CoreTelephony
+import Network
 
 // ヴェゼル ダッシュ：index.html をアプリの中で全画面表示する
 @main
@@ -36,6 +38,9 @@ final class DashViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private var webView: WKWebView!
     private let location = CLLocationManager()
     private let pageHost = "vezel-dash.app"
+    private let telephony = CTTelephonyNetworkInfo()
+    private let pathMonitor = NWPathMonitor()
+    private var currentPath: NWPath?
 
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
@@ -78,7 +83,23 @@ final class DashViewController: UIViewController, WKNavigationDelegate, WKUIDele
         location.activityType = .automotiveNavigation
         location.requestWhenInUseAuthorization()
 
+        // バッテリーと通信の種類を見張る
+        UIDevice.current.isBatteryMonitoringEnabled = true
         let nc = NotificationCenter.default
+        nc.addObserver(self, selector: #selector(pushStatus),
+                       name: UIDevice.batteryLevelDidChangeNotification, object: nil)
+        nc.addObserver(self, selector: #selector(pushStatus),
+                       name: UIDevice.batteryStateDidChangeNotification, object: nil)
+        nc.addObserver(self, selector: #selector(pushStatus),
+                       name: .CTServiceRadioAccessTechnologyDidChange, object: nil)
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            DispatchQueue.main.async {
+                self?.currentPath = path
+                self?.pushStatus()
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "net-monitor"))
+
         nc.addObserver(self, selector: #selector(becameActive),
                        name: UIApplication.didBecomeActiveNotification, object: nil)
         nc.addObserver(self, selector: #selector(resignedActive),
@@ -89,6 +110,40 @@ final class DashViewController: UIViewController, WKNavigationDelegate, WKUIDele
     @objc private func becameActive() {
         UIApplication.shared.isIdleTimerDisabled = true
         startLocationIfAllowed()
+        pushStatus()
+    }
+
+    // MARK: - 通信の種類とバッテリー
+
+    /// 携帯回線の世代（5G / 4G / 3G）。分からなければ nil
+    private func cellularGeneration() -> String? {
+        let techs = telephony.serviceCurrentRadioAccessTechnology?.values.map { $0 } ?? []
+        if techs.contains(where: { $0 == CTRadioAccessTechnologyNR || $0 == CTRadioAccessTechnologyNRNSA }) { return "5G" }
+        if techs.contains(CTRadioAccessTechnologyLTE) { return "4G" }
+        let threeG: Set<String> = [CTRadioAccessTechnologyWCDMA, CTRadioAccessTechnologyHSDPA,
+                                   CTRadioAccessTechnologyHSUPA, CTRadioAccessTechnologyCDMAEVDORev0,
+                                   CTRadioAccessTechnologyCDMAEVDORevA, CTRadioAccessTechnologyCDMAEVDORevB,
+                                   CTRadioAccessTechnologyeHRPD]
+        if techs.contains(where: { threeG.contains($0) }) { return "3G" }
+        if !techs.isEmpty { return "2G" }
+        return nil
+    }
+
+    private func networkLabel() -> String {
+        if let path = currentPath {
+            if path.status != .satisfied { return cellularGeneration() == nil ? "圏外" : "オフライン" }
+            if path.usesInterfaceType(.wifi) { return "Wi-Fi" }
+        }
+        return cellularGeneration() ?? "圏外"
+    }
+
+    @objc private func pushStatus() {
+        let device = UIDevice.current
+        let level = device.batteryLevel   // 取得できないときは -1
+        let charging = device.batteryState == .charging || device.batteryState == .full
+        let net = networkLabel().replacingOccurrences(of: "\"", with: "")
+        let js = "window.__nativeStatus && window.__nativeStatus(\"\(net)\", \(level), \(charging))"
+        webView?.evaluateJavaScript(js, completionHandler: nil)
     }
 
     @objc private func resignedActive() {
@@ -138,6 +193,11 @@ final class DashViewController: UIViewController, WKNavigationDelegate, WKUIDele
         } else if let web = web {
             UIApplication.shared.open(web)
         }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        pushStatus()
+        startLocationIfAllowed()
     }
 
     // MARK: - リンクの扱い：ダッシュボード以外へのリンクは外のアプリで開く
