@@ -1,0 +1,35 @@
+name: VezelDash
+options:
+  bundleIdPrefix: com.yutyan0321
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  VezelDash:
+    type: application
+    platform: iOS
+    sources:
+      - path: VezelDash
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yutyan0321.vezeldash
+        PRODUCT_NAME: VezelDash
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: VezelDash/Info.plist
+      properties:
+        CFBundleDisplayName: ダッシュ
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSLocationWhenInUseUsageDescription: 速度の表示と、現在地の天気の取得に使います。
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        ITSAppUsesNonExemptEncryption: false

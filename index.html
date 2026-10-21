@@ -388,10 +388,16 @@ button { font: inherit; color: inherit; }
     if (href.indexOf("https://soundcloud.com") === 0) return "soundcloud://";
     return "";
   }
+  // iPhoneアプリ版の中で動いているとき（アプリ側が true にする）
+  const NATIVE = !!window.__NATIVE_APP__;
+  function nativeOpen(app, web) {
+    try { window.webkit.messageHandlers.native.postMessage({ type: "open", app: app || "", web: web || "" }); } catch (e) {}
+  }
   const EMBEDDED = (function () { try { return window.top !== window.self; } catch (e) { return true; } })();
   // タップされたら、まずアプリを直接開く。アプリが開かなかったときだけWeb版へ。
   function openDirect(e) {
     const a = e.currentTarget, scheme = a.dataset.app;
+    if (NATIVE) { e.preventDefault(); nativeOpen(scheme, a.getAttribute("href")); return; }
     if (EMBEDDED || !scheme) return;
     e.preventDefault();
     const web = a.getAttribute("href");
@@ -526,20 +532,26 @@ button { font: inherit; color: inherit; }
     }).catch(function () { wxAt = 0; });
   }
   setInterval(maybeWeather, 60 * 1000);
-  if ("geolocation" in navigator) {
+  function onPos(lat, lon, speed) {
+    lastPos = { latitude: lat, longitude: lon }; maybeWeather();
+    const kmh = (speed == null || speed < 0) ? 0 : Math.round(speed * 3.6);
+    speedEl.textContent = kmh; setArc(kmh); noteEl.textContent = "";
+  }
+  if (NATIVE) {
+    // アプリ版：位置と速度はアプリ側（iPhoneのGPS）から届く
+    window.__nativePos = onPos;
+    window.__nativeNoGps = noGps;
+  } else if ("geolocation" in navigator) {
     try {
       navigator.geolocation.watchPosition(function (p) {
-        lastPos = p.coords; maybeWeather();
-        const s = p.coords.speed;
-        const kmh = (s == null || s < 0) ? 0 : Math.round(s * 3.6);
-        speedEl.textContent = kmh; setArc(kmh); noteEl.textContent = "";
+        onPos(p.coords.latitude, p.coords.longitude, p.coords.speed);
       }, noGps, { enableHighAccuracy: true, maximumAge: 1000 });
     } catch (e) { noGps(); }
   } else { noGps(); }
 
   // ---------- Screen on / fullscreen ----------
   const wakeBtn = document.getElementById("wake"), wakeLabel = document.getElementById("wakeLabel");
-  if (!("wakeLock" in navigator) || (function () { try { return window.top !== window.self; } catch (e) { return true; } })()) wakeBtn.hidden = true;
+  if (NATIVE || !("wakeLock" in navigator) || (function () { try { return window.top !== window.self; } catch (e) { return true; } })()) wakeBtn.hidden = true;
   let lock = null;
   async function setWake(on) {
     try {
@@ -560,7 +572,7 @@ button { font: inherit; color: inherit; }
   // 最初にどこかをタップした時点で、自動で画面を消さないようにする
   document.addEventListener("pointerdown", function once() {
     document.removeEventListener("pointerdown", once, true);
-    if (wakeBtn.getAttribute("aria-pressed") !== "true" && "wakeLock" in navigator) setWake(true);
+    if (!NATIVE && wakeBtn.getAttribute("aria-pressed") !== "true" && "wakeLock" in navigator) setWake(true);
   }, true);
 
   // ---------- Rendering ----------

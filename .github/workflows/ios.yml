@@ -1,0 +1,49 @@
+name: iPhoneアプリをビルド
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: XcodeGen を入れる
+        run: brew install xcodegen
+
+      - name: ダッシュボードをアプリに入れる
+        run: cp index.html ios/VezelDash/Resources/index.html
+
+      - name: Xcodeプロジェクトを作る
+        run: cd ios && xcodegen generate
+
+      - name: ビルド（署名なし。署名はSideloadlyで行う）
+        run: |
+          xcodebuild \
+            -project ios/VezelDash.xcodeproj \
+            -scheme VezelDash \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: IPAにまとめる
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/VezelDash.app Payload/
+          zip -qr VezelDash.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VezelDash-ipa
+          path: VezelDash.ipa
+          retention-days: 30
