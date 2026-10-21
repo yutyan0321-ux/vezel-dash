@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#070b14">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>html,body{margin:0}img{max-width:100%}[hidden]{display:none!important}
+.dash{padding-top:max(10px,env(safe-area-inset-top,0px));padding-bottom:max(10px,env(safe-area-inset-bottom,0px))}</style>
+<title>ヴェゼル ダッシュ</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&family=Noto+Sans+JP:wght@500;700&display=swap">
+<style>
+/* Layout: landscape cockpit — glassy instrument panel on the left (clock, arc speedometer), paged 3×2 app tiles on the right, destination dock below. Single deliberate night look for a car screen. */
+:root {
+  --bg: #070b14;
+  --glass: rgba(24, 33, 52, .72);
+  --glass-hi: rgba(36, 48, 74, .9);
+  --sheet: #121a2b;
+  --edge: rgba(140, 165, 210, .16);
+  --fg: #f2f5fa;
+  --muted: #8f9cb3;
+  --amber: #ffb43c;
+  --danger: #ff6b6b;
+  --gap: 12px;
+  --font-num: "Barlow", "Helvetica Neue", system-ui, sans-serif;
+  --font-ui: "Noto Sans JP", "Hiragino Sans", system-ui, sans-serif;
+  color-scheme: dark;
+}
+html { box-sizing: border-box; height: 100%; }
+body { height: 100%; }
+body {
+  background:
+    radial-gradient(60% 50% at 62% -10%, rgba(255, 180, 60, .16), transparent 70%),
+    radial-gradient(50% 60% at 100% 100%, rgba(61, 139, 255, .12), transparent 70%),
+    var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; }
+.dash {
+  height: 100%;
+  box-sizing: border-box;
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  grid-template-columns: minmax(190px, 30%) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: var(--gap);
+}
+.glass {
+  background: rgba(10, 15, 26, .46);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .10);
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 10px 30px rgba(0,0,0,.25);
+}
+/* User background image + dimming layer */
+.bg { position: fixed; inset: 0; z-index: -1; background: center / cover no-repeat; }
+.bg::after { content: ""; position: absolute; inset: 0; background: rgba(4, 7, 14, var(--dim, .35)); }
+.clock, .date, .t-name, .wx-temp { text-shadow: 0 1px 4px rgba(0,0,0,.55); }
+
+/* Instrument panel */
+.rail {
+  grid-row: 1 / 3;
+  padding: 14px 16px;
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 6px;
+  min-width: 0; min-height: 0;
+}
+.clock {
+  font-family: var(--font-num); font-weight: 600;
+  font-size: clamp(38px, 12vmin, 88px); line-height: .95;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.date { font-size: clamp(13px, 3.4vmin, 19px); font-weight: 500; margin-top: 2px; white-space: nowrap; }
+.when { min-width: 0; }
+.sub-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; min-width: 0; flex-wrap: wrap; row-gap: 2px; }
+.sub-row .date { margin-top: 0; }
+.weather { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.wx-ico { width: clamp(18px, 5.4vmin, 26px); height: clamp(18px, 5.4vmin, 26px); flex: none; }
+.wx-temp { font-family: var(--font-num); font-weight: 600; font-size: clamp(14px, 4.2vmin, 21px); line-height: 1; font-variant-numeric: tabular-nums; }
+.wx-label { font-size: clamp(11px, 3vmin, 14px); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gauge { position: relative; min-height: 0; display: grid; place-items: center; container-type: size; }
+@container (max-height: 120px) { .speed-note { display: none; } }
+.gauge svg { width: 100%; height: 100%; max-height: 240px; display: block; }
+.gauge .track { fill: none; stroke: rgba(140,165,210,.14); stroke-width: 9; stroke-linecap: round; }
+.gauge .fill { fill: none; stroke: url(#amberGrad); stroke-width: 9; stroke-linecap: round; transition: stroke-dashoffset .6s ease; }
+.gauge-read { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 4%; }
+.speed-val {
+  font-family: var(--font-num); font-weight: 700;
+  font-size: clamp(28px, min(13vmin, 40cqh), 96px); line-height: .9;
+  font-variant-numeric: tabular-nums;
+}
+.speed-unit { font-family: var(--font-num); font-size: clamp(13px, 3.6vmin, 22px); color: var(--muted); }
+.speed-note { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.rail-actions { display: flex; gap: 8px; container-type: inline-size; }
+@container (max-width: 250px) { .rail-actions .pill { padding: 0 6px; gap: 4px; font-size: 12px; } .rail-actions .pill svg { width: 16px; height: 16px; } }
+.pill {
+  flex: 1 1 0; min-width: 0; min-height: 42px; border-radius: 999px; border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.07); color: var(--fg); font: 700 13px var(--font-ui); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px;
+  white-space: nowrap;
+}
+.pill svg { width: 18px; height: 18px; flex: none; }
+.pill span { overflow: hidden; text-overflow: ellipsis; }
+.pill[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); }
+.pill.chip { flex: 0 0 auto; min-height: 34px; padding: 0 14px; font-size: 12px; color: var(--muted); }
+.pill.chip[aria-pressed="true"] { color: var(--amber); background: rgba(255,180,60,.12); }
+
+/* App icons: paged, row-major 4×2 per page, no tile boxes */
+.grid-wrap { position: relative; min-width: 0; min-height: 0; }
+.grid {
+  height: 100%;
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-auto-columns: calc((100% - 3 * var(--gap)) / 4);
+  gap: var(--gap);
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.grid::-webkit-scrollbar { display: none; }
+.tile {
+  position: relative; display: block; container-type: size;
+  color: var(--fg); text-decoration: none; min-width: 0; min-height: 0;
+  border-radius: 18px; scroll-snap-align: start;
+  transition: transform .12s ease;
+}
+.tile:active { transform: scale(.92); }
+.tile-in {
+  height: 100%; box-sizing: border-box; padding: 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+}
+@container (max-height: 72px) {
+  .tile-in { gap: 3px; padding: 2px; }
+  .tile-in .t-name { font-size: 11px; }
+}
+.tile:focus-visible, .pill:focus-visible, .dest:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+.app {
+  position: relative; overflow: hidden; flex: none;
+  height: clamp(32px, min(17vmin, 64cqh), 96px); aspect-ratio: 1; max-width: 86%;
+  border-radius: 23%; display: grid; place-items: center;
+  box-shadow:
+    0 6px 18px rgba(0,0,0,.4),
+    inset 0 1.5px 1px rgba(255,255,255,.55),
+    inset 0 -3px 8px rgba(0,0,0,.14);
+}
+.app::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,.32), rgba(255,255,255,0) 48%);
+}
+.app svg { position: relative; z-index: 1; width: 58%; height: 58%; filter: drop-shadow(0 1px 2px rgba(0,0,0,.18)); }
+.app.custom { background: none !important; }
+.app.custom::after { display: none; }
+.app img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.t-name {
+  flex: none; font-size: clamp(11px, 3.1vmin, 17px); font-weight: 600; line-height: 1.25; text-align: center; letter-spacing: .01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.pager {
+  position: absolute; left: 0; right: 0; bottom: calc(-1 * var(--gap) + 3px);
+  display: flex; justify-content: center; gap: 6px; pointer-events: none;
+}
+.pager i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.25); }
+.pager i.on { background: var(--fg); }
+
+/* Destination dock */
+.dock { display: flex; gap: 8px; align-items: stretch; padding: 8px; min-width: 0; }
+.dest {
+  flex: 1 1 0; min-width: 0; min-height: 48px; border-radius: 999px;
+  background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.08);
+  color: var(--fg); text-decoration: none; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; padding: 0 14px 0 6px;
+}
+.dest:active { background: var(--glass-hi); }
+.dot { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+.dot svg { width: 20px; height: 20px; }
+.dest .txt { min-width: 0; text-align: left; }
+.dest b { display: block; font-size: 15px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dest small { display: block; font-size: 12px; line-height: 1.3; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dest.edit { flex: 0 0 auto; padding: 0 18px; gap: 8px; }
+.dest.edit svg { width: 20px; height: 20px; }
+
+/* Editor */
+.sheet {
+  position: fixed; inset: 0; background: rgba(3, 6, 12, .78);
+  display: grid; place-items: center; z-index: 5;
+  padding-block: max(10px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.sheet-card {
+  background: var(--sheet); border: 1px solid var(--edge); border-radius: 22px;
+  width: min(760px, 100%); max-height: 100%; overflow: auto; box-sizing: border-box;
+  display: flex; flex-direction: column;
+}
+.sheet-head { padding: 16px 18px 6px; display: flex; flex-direction: column; gap: 4px; }
+.sheet-head h2 { margin: 0; font-size: 17px; }
+.sheet-head p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.tabs { display: flex; gap: 6px; padding: 8px 18px 0; }
+.tab { flex: 0 0 auto; min-height: 36px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--edge); background: transparent; font-weight: 700; font-size: 13px; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--fg); color: var(--sheet); border-color: var(--fg); }
+.list { padding: 4px 18px 8px; display: flex; flex-direction: column; }
+.item { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; align-items: start; padding-block: 12px; border-bottom: 1px solid var(--edge); }
+.item .app { height: 52px; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+.item .dot { width: 44px; height: 44px; margin: 4px; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.fields .full { grid-column: 1 / -1; }
+.fields input, .fields select {
+  min-width: 0; width: 100%; box-sizing: border-box; background: var(--bg); color: var(--fg); border: 1px solid var(--edge);
+  border-radius: 12px; padding: 9px 10px; font: 500 14px var(--font-ui); user-select: text; -webkit-user-select: text;
+}
+.btns { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.sbtn {
+  min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--edge);
+  background: rgba(255,255,255,.04); font: 700 12px var(--font-ui); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.sbtn:disabled { opacity: .35; cursor: default; }
+.sbtn.danger { color: var(--danger); }
+.add { margin: 12px 18px 4px; min-height: 44px; border-radius: 14px; border: 1px dashed rgba(140,165,210,.4); background: transparent; font-weight: 700; font-size: 14px; cursor: pointer; }
+.add:disabled { opacity: .35; }
+.sheet-foot {
+  position: sticky; bottom: 0; margin-top: auto;
+  display: flex; gap: 8px; align-items: center; padding: 12px 18px;
+  background: var(--sheet); border-top: 1px solid var(--edge);
+}
+.sheet-foot .status { flex: 1; min-width: 0; font-size: 12px; color: var(--amber); }
+.sheet-foot .pill { flex: 0 0 auto; padding: 0 18px; }
+.pill.primary { background: var(--amber); color: #1d1304; border-color: var(--amber); }
+.bg-edit { padding: 12px 18px 8px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.bg-prev { aspect-ratio: 19.5 / 9; max-width: 100%; border-radius: 14px; border: 1px solid var(--edge); background: center / cover no-repeat, linear-gradient(135deg, #1a2440, #070b14); position: relative; overflow: hidden; }
+.bg-prev::after { content: ""; position: absolute; inset: 0; background: rgba(4, 7, 14, var(--dim, .35)); }
+.bg-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.bg-side label.range { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; }
+.bg-side input[type=range] { width: 100%; accent-color: var(--amber); }
+.bg-side .note { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0; }
+@media (max-width: 560px) { .bg-edit { grid-template-columns: minmax(0, 1fr); } }
+.linkish { background: none; border: 0; color: var(--muted); font-size: 12px; text-decoration: underline; cursor: pointer; padding: 0; }
+
+.portrait-hint { display: none; }
+
+@media (max-height: 380px) {
+  :root { --gap: 10px; }
+  .dash { padding-block: 8px; }
+  .rail { padding: 10px 14px; }
+  .pill { min-height: 38px; }
+  .dest { min-height: 44px; }
+  .dot { width: 32px; height: 32px; }
+  .dock { padding: 6px; }
+}
+@media (max-width: 640px) and (orientation: portrait) {
+  body { overflow: auto; }
+  .dash { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  .rail { grid-row: auto; grid-template-rows: auto 200px auto; }
+  .dest.edit { flex: 1 1 100%; justify-content: center; }
+  .clock { font-size: 64px; }
+  .speed-val { font-size: 72px; }
+  .grid-wrap { height: 330px; }
+  .dock { flex-wrap: wrap; }
+  .dest { flex: 1 1 140px; }
+  .portrait-hint { display: block; text-align: center; color: var(--muted); font-size: 12px; margin: 0; }
+}
+@media (max-width: 560px) { .fields { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .tile, .gauge .fill { transition: none; } }
+</style>
+
+</head>
+<body>
+<div class="bg" id="bg" aria-hidden="true" hidden></div>
+<main class="dash">
+  <section class="rail glass" aria-label="計器">
+    <div class="when">
+      <div class="clock" id="clock">17:38</div>
+      <div class="sub-row">
+        <span class="date" id="date">10月21日（水）</span>
+        <span class="weather" id="weather" aria-label="天気" hidden>
+          <svg class="wx-ico" id="wxIco" viewBox="0 0 24 24" aria-hidden="true"></svg>
+          <b class="wx-temp" id="wxTemp">--°</b>
+          <span class="wx-label" id="wxLabel"></span>
+        </span>
+      </div>
+    </div>
+    <div class="gauge">
+      <svg viewBox="0 0 200 165" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <defs>
+          <linearGradient id="amberGrad" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0" stop-color="#ffcf5a"/>
+            <stop offset="1" stop-color="#e58a1a"/>
+          </linearGradient>
+        </defs>
+        <path class="track" d="M 37 152 A 80 80 0 1 1 163 152"/>
+        <path class="fill" id="arc" d="M 37 152 A 80 80 0 1 1 163 152"/>
+      </svg>
+      <div class="gauge-read">
+        <div class="speed-val" id="speed">--</div>
+        <div class="speed-unit">km/h</div>
+        <div class="speed-note" id="speedNote">GPS 準備中</div>
+      </div>
+    </div>
+    <div class="rail-actions">
+      <button class="pill chip" id="wake" aria-pressed="false" title="画面を消さない">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <span id="wakeLabel">画面ON</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="grid-wrap">
+    <nav class="grid" id="grid" aria-label="アプリ"></nav>
+    <div class="pager" id="pager" aria-hidden="true"></div>
+  </div>
+
+  <div class="dock glass" id="dock" aria-label="よく行く場所"></div>
+  <p class="portrait-hint">iPhoneを横向きにすると、ナビ画面いっぱいに表示されます</p>
+</main>
+
+<div class="sheet" id="sheet" hidden>
+  <form class="sheet-card" id="editForm">
+    <div class="sheet-head">
+      <h2>ホーム画面を編集</h2>
+      <p id="sheetHint"></p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab" role="tab" id="tabApps" aria-selected="true">アプリ</button>
+      <button type="button" class="tab" role="tab" id="tabDests" aria-selected="false">よく行く場所</button>
+      <button type="button" class="tab" role="tab" id="tabBg" aria-selected="false">背景</button>
+    </div>
+    <div class="list" id="list"></div>
+    <button type="button" class="add" id="addBtn">＋ 追加</button>
+    <div class="sheet-foot">
+      <div class="status" id="status"><button type="button" class="linkish" id="resetAll">最初の状態に戻す</button></div>
+      <button type="button" class="pill" id="cancel">やめる</button>
+      <button type="submit" class="pill primary">保存</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  // ---------- Icon library (original glyphs) ----------
+  const W = 'fill="rgba(255,255,255,.9)"';
+  const ICONS = {
+    maps:      { label: "ナビ矢印", tint: "42,170,120",  bg: "linear-gradient(180deg,#7be3a6,#2fb57c)", svg: '<path ' + W + ' d="M12 2.5 19 20l-7-3.2L5 20z"/>' },
+    pin:       { label: "ピン",     tint: "70,110,220",  bg: "linear-gradient(180deg,#ffffff,#e9eef6)", svg: '<path fill="#2f6fe0" fill-rule="evenodd" d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 4.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6z"/>' },
+    gs:        { label: "給油",     tint: "230,150,40",  bg: "linear-gradient(180deg,#ffc85a,#f2821f)", svg: '<path ' + W + ' d="M5 3h9a1 1 0 0 1 1 1v8h1.5a2 2 0 0 1 2 2v3a1 1 0 0 0 2 0V9l-2.3-2.3 1.4-1.4L22 8.6V17a3 3 0 0 1-6 0v-3h-1v7H4V4a1 1 0 0 1 1-1zm1 2v5h7V5H6z"/>' },
+    store:     { label: "お店",     tint: "40,160,160",  bg: "linear-gradient(180deg,#6fd8cf,#1f9a9a)", svg: '<path ' + W + ' d="M4 8h16l-1.2 12H5.2zM8.5 8a3.5 3.5 0 0 1 7 0h-2a1.5 1.5 0 0 0-3 0z"/>' },
+    park:      { label: "駐車場",   tint: "61,120,240",  bg: "linear-gradient(180deg,#6aa8ff,#2f62e0)", svg: '<path ' + W + ' fill-rule="evenodd" d="M7 3h6a5 5 0 0 1 0 10h-2.5v8H7zm3.5 3.3v3.4H13a1.7 1.7 0 0 0 0-3.4z"/>' },
+    music:     { label: "音符",     tint: "220,70,110",  bg: "linear-gradient(180deg,#ff6f86,#e9334d)", svg: '<path ' + W + ' d="M19 3v12.5a3.5 3.5 0 1 1-2-3.16V7.3l-8 1.8v8.4A3.5 3.5 0 1 1 7 14.34V6l12-3z"/>' },
+    ytmusic:   { label: "再生（丸）", tint: "225,55,60", bg: "linear-gradient(180deg,#ffffff,#eef0f4)", svg: '<circle cx="12" cy="12" r="8.5" fill="#e8303c"/><path d="M10 8.3v7.4l6.2-3.7z" fill="#fff"/>' },
+    youtube:   { label: "再生（角）", tint: "225,55,60", bg: "linear-gradient(180deg,#ffffff,#eef0f4)", svg: '<rect x="3" y="5.5" width="18" height="13" rx="4.5" fill="#e8303c"/><path d="M10.2 9v6l5-3z" fill="#fff"/>' },
+    headphones:{ label: "ヘッドホン", tint: "40,170,110", bg: "linear-gradient(180deg,#6fe0a0,#1fae6a)", svg: '<path ' + W + ' d="M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1.5v-8H5v-1a7 7 0 0 1 14 0v1h-2.5v8H18a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z"/>' },
+    shortcuts: { label: "タイル",   tint: "100,110,240", bg: "linear-gradient(180deg,#8d86ff,#4b5cf0)", svg: '<g ' + W + '><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></g>' },
+    phone:     { label: "電話",     tint: "50,180,80",   bg: "linear-gradient(180deg,#7be38a,#2fb54c)", svg: '<path ' + W + ' d="M6.6 10.8a15 15 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/>' },
+    chat:      { label: "吹き出し", tint: "50,180,80",   bg: "linear-gradient(180deg,#6fe08a,#22b04c)", svg: '<path ' + W + ' d="M12 3C6.5 3 2 6.6 2 11c0 2.5 1.4 4.7 3.6 6.2L5 21l4-2.2c.9.2 1.9.3 3 .3 5.5 0 10-3.6 10-8s-4.5-8-10-8z"/>' },
+    web:       { label: "地球",     tint: "61,120,240",  bg: "linear-gradient(180deg,#6aa8ff,#2f62e0)", svg: '<g fill="none" stroke="rgba(255,255,255,.92)" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.6 5.2 3.6 8.5s-1.2 6.1-3.6 8.5c-2.4-2.4-3.6-5.2-3.6-8.5S9.6 5.9 12 3.5z"/></g>' },
+    star:      { label: "星",       tint: "230,150,40",  bg: "linear-gradient(180deg,#ffcf5a,#f08a1a)", svg: '<path ' + W + ' d="m12 2.8 2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3-4.6-4.4 6.3-.9z"/>' }
+  };
+  const DEST_ICONS = {
+    home: { label: "家",   bg: "linear-gradient(145deg,#5aa2ff,#2160e0)", svg: '<path fill="#fff" d="M12 3 2.5 11h2.5v9h5v-6h4v6h5v-9h2.5z"/>' },
+    star: { label: "星",   bg: "linear-gradient(145deg,#ffcf5a,#f08a1a)", svg: '<path fill="#fff" d="m12 2.8 2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3-4.6-4.4 6.3-.9z"/>' },
+    pin:  { label: "ピン", bg: "linear-gradient(145deg,#6fe0a0,#1fae6a)", svg: '<path fill="#fff" fill-rule="evenodd" d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 4.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6z"/>' },
+    bag:  { label: "かばん", bg: "linear-gradient(145deg,#a58bff,#5a4ae0)", svg: '<path fill="#fff" d="M9 4h6a2 2 0 0 1 2 2v1h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h3V6a2 2 0 0 1 2-2zm0 3h6V6H9z"/>' }
+  };
+  const q = function (s) { return encodeURIComponent(s); };
+  const GMAPS = "https://www.google.com/maps";
+  function gsearch(word) { return "https://www.google.com/maps/search/?api=1&query=" + q(word); }
+  // Webリンクから、対応するアプリを直接開くURLを作る
+  function appScheme(href) {
+    if (!href) return "";
+    let m;
+    if (href === GMAPS || href === GMAPS + "/") return "comgooglemaps://";
+    if ((m = href.match(/google\.com\/maps\/search\/\?api=1&query=([^&]+)/))) return "comgooglemaps://?q=" + m[1];
+    if ((m = href.match(/google\.com\/maps\/dir\/\?api=1&destination=([^&]+)/))) return "comgooglemaps://?daddr=" + m[1] + "&directionsmode=driving";
+    if (href.indexOf("https://maps.apple.com") === 0) return "maps://" + href.slice("https://maps.apple.com/".length);
+    if (href.indexOf("https://music.apple.com") === 0) return "music://";
+    if (href.indexOf("https://music.youtube.com") === 0) return "youtubemusic://";
+    if (href.indexOf("https://www.youtube.com") === 0 || href.indexOf("https://youtube.com") === 0) return "youtube://";
+    if (href.indexOf("https://open.spotify.com") === 0) return "spotify://";
+    if (href.indexOf("https://soundcloud.com") === 0) return "soundcloud://";
+    return "";
+  }
+  const EMBEDDED = (function () { try { return window.top !== window.self; } catch (e) { return true; } })();
+  // タップされたら、まずアプリを直接開く。アプリが開かなかったときだけWeb版へ。
+  function openDirect(e) {
+    const a = e.currentTarget, scheme = a.dataset.app;
+    if (EMBEDDED || !scheme) return;
+    e.preventDefault();
+    const web = a.getAttribute("href");
+    let left = false;
+    const mark = function () { left = true; };
+    window.addEventListener("pagehide", mark, { once: true });
+    document.addEventListener("visibilitychange", function v() { if (document.hidden) { left = true; document.removeEventListener("visibilitychange", v); } });
+    window.addEventListener("blur", mark, { once: true });
+    location.href = scheme;
+    setTimeout(function () { if (!left && !document.hidden && web && web !== "#") location.href = web; }, 2500);
+  }
+  function gnav(dest) { return "https://www.google.com/maps/dir/?api=1&destination=" + q(dest) + "&travelmode=driving&dir_action=navigate"; }
+  const PRESETS = [
+    { label: "Google マップ",      name: "マップ",        href: GMAPS,                                icon: "pin" },
+    { label: "近くのガソリンスタンド", name: "近くのGS",   href: gsearch("ガソリンスタンド"),          icon: "gs" },
+    { label: "近くのコンビニ",     name: "コンビニ",      href: gsearch("コンビニ"),                  icon: "store" },
+    { label: "近くの駐車場",       name: "駐車場",        href: gsearch("駐車場"),                    icon: "park" },
+    { label: "Apple マップ",       name: "Apple マップ",  href: "https://maps.apple.com/",            icon: "maps" },
+    { label: "Apple Music",        name: "ミュージック",  href: "https://music.apple.com/",           icon: "music" },
+    { label: "YouTube Music",      name: "YouTube Music", href: "https://music.youtube.com/",         icon: "ytmusic" },
+    { label: "YouTube",            name: "YouTube",       href: "https://www.youtube.com/",           icon: "youtube" },
+    { label: "Spotify",            name: "Spotify",       href: "https://open.spotify.com/",          icon: "headphones" },
+    { label: "SoundCloud",         name: "SoundCloud",    href: "https://soundcloud.com/",            icon: "headphones" },
+    { label: "ショートカット",     name: "ショートカット", href: "shortcuts://",                      icon: "shortcuts" },
+    { label: "LINE",               name: "LINE",          href: "line://",                            icon: "chat" },
+    { label: "電話",               name: "電話",          href: "tel:",                               icon: "phone" }
+  ];
+  function preset(label) { return PRESETS.filter(function (p) { return p.label === label; })[0]; }
+  function fromPreset(label) { const p = preset(label); return { name: p.name, href: p.href, icon: p.icon, img: "" }; }
+  const DEFAULT_APPS = ["Google マップ", "近くのガソリンスタンド", "Apple Music", "YouTube Music", "YouTube", "ショートカット"].map(fromPreset);
+  const DEFAULT_DESTS = [
+    { name: "自宅", addr: "", icon: "home" },
+    { name: "お気に入り", addr: "", icon: "star" }
+  ];
+  const MAX_APPS = 18, MAX_DESTS = 4;
+
+  // ---------- Storage ----------
+  const AKEY = "vezel-dash-apps-v2", DKEY = "vezel-dash-dests-v2";
+  function clone(v) { return JSON.parse(JSON.stringify(v)); }
+  function load(key, fallback) {
+    try { const v = JSON.parse(localStorage.getItem(key)); if (Array.isArray(v)) return v; } catch (e) {}
+    return clone(fallback);
+  }
+  function store(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  const BKEY = "vezel-dash-bg-v1";
+  function storeObj(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  let bgSet = (function () {
+    try { const v = JSON.parse(localStorage.getItem(BKEY)); if (v && typeof v === "object") return { img: v.img || "", dim: typeof v.dim === "number" ? v.dim : .35 }; } catch (e) {}
+    return { img: "", dim: .35 };
+  })();
+  const bgEl = document.getElementById("bg");
+  function applyBg() {
+    bgEl.hidden = !bgSet.img;
+    bgEl.style.backgroundImage = bgSet.img ? 'url("' + bgSet.img + '")' : "";
+    bgEl.style.setProperty("--dim", String(bgSet.dim));
+  }
+  // 写真を長辺1600pxに縮めて保存（容量を抑えるため）
+  function toBg(file, done) {
+    const r = new FileReader();
+    r.onload = function () {
+      const img = new Image();
+      img.onload = function () {
+        const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        done(c.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = function () { done(null); };
+      img.src = r.result;
+    };
+    r.onerror = function () { done(null); };
+    r.readAsDataURL(file);
+  }
+  let apps = load(AKEY, DEFAULT_APPS).map(function (a) {
+    // 以前の保存内容のApple マップをGoogle マップに置き換える
+    if (a.href === "https://maps.apple.com/" && a.name === "マップ") { a.href = GMAPS; if (a.icon === "maps") a.icon = "pin"; }
+    else if (a.href && a.href.indexOf("https://maps.apple.com/?q=") === 0) {
+      a.href = gsearch(decodeURIComponent(a.href.slice("https://maps.apple.com/?q=".length)));
+    }
+    return a;
+  });
+  let dests = load(DKEY, DEFAULT_DESTS);
+
+  // ---------- Clock ----------
+  const days = ["日","月","火","水","木","金","土"];
+  const clockEl = document.getElementById("clock"), dateEl = document.getElementById("date");
+  function tick() {
+    const d = new Date();
+    clockEl.textContent = d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0");
+    dateEl.textContent = (d.getMonth() + 1) + "月" + d.getDate() + "日（" + days[d.getDay()] + "）";
+  }
+  tick(); setInterval(tick, 5000);
+
+  // ---------- Speed ----------
+  const arc = document.getElementById("arc");
+  const len = arc.getTotalLength();
+  arc.style.strokeDasharray = len;
+  function setArc(kmh) { arc.style.strokeDashoffset = len * (1 - Math.min(kmh, 180) / 180); }
+  setArc(0);
+  const speedEl = document.getElementById("speed"), noteEl = document.getElementById("speedNote");
+  let lastPos = null;
+  function noGps() { noteEl.textContent = "位置情報が使えません"; }
+
+  // ---------- Weather (Open-Meteo, no key) ----------
+  const wxIco = document.getElementById("wxIco"), wxTemp = document.getElementById("wxTemp"), wxLabel = document.getElementById("wxLabel");
+  const WX = {
+    sun:   ['晴れ',   '<circle cx="12" cy="12" r="4.5" fill="#ffc94a"/><g stroke="#ffc94a" stroke-width="2" stroke-linecap="round"><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></g>'],
+    part:  ['晴れ時々くもり', '<circle cx="9" cy="9" r="3.6" fill="#ffc94a"/><path d="M8 19h9a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6 1.4A2.8 2.8 0 0 0 8 19z" fill="#d6deea"/>'],
+    cloud: ['くもり', '<path d="M7 19h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.2 3.2 0 0 0 7 19z" fill="#c4cedd"/>'],
+    fog:   ['霧',     '<g stroke="#c4cedd" stroke-width="2" stroke-linecap="round"><path d="M4 9h16M6 13h12M4 17h16"/></g>'],
+    rain:  ['雨',     '<path d="M7 15h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.2 3.2 0 0 0 7 15z" fill="#c4cedd"/><g stroke="#5fa8ff" stroke-width="2" stroke-linecap="round"><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></g>'],
+    snow:  ['雪',     '<path d="M7 15h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.2 3.2 0 0 0 7 15z" fill="#c4cedd"/><g fill="#fff"><circle cx="8" cy="19" r="1.2"/><circle cx="12" cy="20.5" r="1.2"/><circle cx="16" cy="19" r="1.2"/></g>'],
+    storm: ['雷雨',   '<path d="M7 14h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.2 3.2 0 0 0 7 14z" fill="#9aa6b8"/><path d="M12.5 14l-3 5h3l-1.5 4 4.5-6h-3l1.5-3z" fill="#ffc94a"/>']
+  };
+  function wxKind(c) {
+    if (c === 0) return "sun"; if (c <= 2) return "part"; if (c === 3) return "cloud";
+    if (c === 45 || c === 48) return "fog"; if (c >= 95) return "storm";
+    if ((c >= 71 && c <= 77) || c === 85 || c === 86) return "snow"; return "rain";
+  }
+  let wxAt = 0;
+  function maybeWeather() {
+    if (!lastPos || Date.now() - wxAt < 15 * 60 * 1000) return;
+    wxAt = Date.now();
+    const url = "https://api.open-meteo.com/v1/forecast?latitude=" + lastPos.latitude.toFixed(3) + "&longitude=" + lastPos.longitude.toFixed(3) + "&current=temperature_2m,weather_code&timezone=auto";
+    fetch(url).then(function (r) { return r.json(); }).then(function (j) {
+      const k = wxKind(j.current.weather_code);
+      wxIco.innerHTML = WX[k][1];
+      wxTemp.textContent = Math.round(j.current.temperature_2m) + "°";
+      wxLabel.textContent = WX[k][0];
+      document.getElementById("weather").hidden = false;
+    }).catch(function () { wxAt = 0; });
+  }
+  setInterval(maybeWeather, 60 * 1000);
+  if ("geolocation" in navigator) {
+    try {
+      navigator.geolocation.watchPosition(function (p) {
+        lastPos = p.coords; maybeWeather();
+        const s = p.coords.speed;
+        const kmh = (s == null || s < 0) ? 0 : Math.round(s * 3.6);
+        speedEl.textContent = kmh; setArc(kmh); noteEl.textContent = "";
+      }, noGps, { enableHighAccuracy: true, maximumAge: 1000 });
+    } catch (e) { noGps(); }
+  } else { noGps(); }
+
+  // ---------- Screen on / fullscreen ----------
+  const wakeBtn = document.getElementById("wake"), wakeLabel = document.getElementById("wakeLabel");
+  if (!("wakeLock" in navigator) || (function () { try { return window.top !== window.self; } catch (e) { return true; } })()) wakeBtn.hidden = true;
+  let lock = null;
+  async function setWake(on) {
+    try {
+      if (on) {
+        lock = await navigator.wakeLock.request("screen");
+        wakeBtn.setAttribute("aria-pressed", "true");
+        lock.addEventListener("release", function () { lock = null; if (document.visibilityState === "visible") wakeBtn.setAttribute("aria-pressed", "false"); });
+      } else {
+        wakeBtn.setAttribute("aria-pressed", "false");
+        if (lock) { await lock.release(); lock = null; }
+      }
+    } catch (e) { wakeBtn.hidden = true; }
+  }
+  wakeBtn.addEventListener("click", function () { setWake(wakeBtn.getAttribute("aria-pressed") !== "true"); });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && wakeBtn.getAttribute("aria-pressed") === "true" && !lock) setWake(true);
+  });
+  // 最初にどこかをタップした時点で、自動で画面を消さないようにする
+  document.addEventListener("pointerdown", function once() {
+    document.removeEventListener("pointerdown", once, true);
+    if (wakeBtn.getAttribute("aria-pressed") !== "true" && "wakeLock" in navigator) setWake(true);
+  }, true);
+
+  // ---------- Rendering ----------
+  function appIcon(a) {
+    const el = document.createElement("div");
+    el.className = "app";
+    if (a.img) {
+      el.classList.add("custom");
+      const im = new Image(); im.src = a.img; im.alt = ""; el.appendChild(im);
+    } else {
+      const ic = ICONS[a.icon] || ICONS.web;
+      el.style.background = ic.bg;
+      el.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + ic.svg + '</svg>';
+    }
+    return el;
+  }
+  function destDot(d) {
+    const ic = DEST_ICONS[d.icon] || DEST_ICONS.pin;
+    const el = document.createElement("div");
+    el.className = "dot"; el.style.background = ic.bg;
+    el.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + ic.svg + '</svg>';
+    return el;
+  }
+  const grid = document.getElementById("grid"), pager = document.getElementById("pager");
+  function renderApps() {
+    grid.textContent = "";
+    apps.forEach(function (a, i) {
+      const t = document.createElement("a");
+      t.className = "tile";
+      t.href = a.href || "#";
+      t.target = "_blank"; t.rel = "noopener";
+      const sch = appScheme(a.href); if (sch) { t.dataset.app = sch; t.addEventListener("click", openDirect); }
+      if (!a.href) t.addEventListener("click", function (e) { e.preventDefault(); openSheet("apps"); });
+      const page = Math.floor(i / 8), w = i % 8;
+      t.style.gridRow = String(Math.floor(w / 4) + 1);
+      t.style.gridColumn = String(page * 4 + (w % 4) + 1);
+      const inner = document.createElement("div"); inner.className = "tile-in";
+      inner.appendChild(appIcon(a));
+      const n = document.createElement("div"); n.className = "t-name"; n.textContent = a.name || "名前なし";
+      inner.appendChild(n);
+      t.appendChild(inner);
+      grid.appendChild(t);
+    });
+    const pages = Math.max(1, Math.ceil(apps.length / 8));
+    pager.textContent = "";
+    pager.hidden = pages < 2;
+    for (let p = 0; p < pages; p++) pager.appendChild(document.createElement("i"));
+    updatePager();
+  }
+  function updatePager() {
+    const dots = pager.children; if (!dots.length) return;
+    const p = Math.round(grid.scrollLeft / Math.max(1, grid.clientWidth + 12));
+    for (let k = 0; k < dots.length; k++) dots[k].className = k === p ? "on" : "";
+  }
+  grid.addEventListener("scroll", updatePager, { passive: true });
+
+  const dock = document.getElementById("dock");
+  function renderDests() {
+    dock.textContent = "";
+    dests.forEach(function (d) {
+      const set = !!d.addr;
+      const el = document.createElement(set ? "a" : "button");
+      el.className = "dest";
+      if (set) { el.href = gnav(d.addr); el.target = "_blank"; el.rel = "noopener"; el.dataset.app = appScheme(el.href); el.addEventListener("click", openDirect); }
+      else { el.type = "button"; el.addEventListener("click", function () { openSheet("dests"); }); }
+      el.appendChild(destDot(d));
+      const tx = document.createElement("span"); tx.className = "txt";
+      const b = document.createElement("b"); b.textContent = d.name || d.addr || "名前なし";
+      const s = document.createElement("small"); s.textContent = set ? d.addr : "タップして場所を登録";
+      tx.appendChild(b); tx.appendChild(s); el.appendChild(tx);
+      dock.appendChild(el);
+    });
+    const btn = document.createElement("button");
+    btn.className = "dest edit"; btn.type = "button";
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg><b>編集</b>';
+    btn.addEventListener("click", function () { openSheet("apps"); });
+    dock.appendChild(btn);
+  }
+
+  // ---------- Editor ----------
+  const sheet = document.getElementById("sheet"), list = document.getElementById("list");
+  const addBtn = document.getElementById("addBtn"), statusEl = document.getElementById("status"), hint = document.getElementById("sheetHint");
+  const tabApps = document.getElementById("tabApps"), tabDests = document.getElementById("tabDests");
+  const tabBg = document.getElementById("tabBg");
+  let mode = "apps", dApps = [], dDests = [], dBg = { img: "", dim: .35 };
+
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function sbtn(text, fn, opts) {
+    const b = el("button", "sbtn" + (opts && opts.danger ? " danger" : ""), text); b.type = "button";
+    if (opts && opts.disabled) b.disabled = true;
+    if (opts && opts.label) b.setAttribute("aria-label", opts.label);
+    b.addEventListener("click", fn); return b;
+  }
+  function move(arr, i, d) { const j = i + d; if (j < 0 || j >= arr.length) return; const t = arr[i]; arr[i] = arr[j]; arr[j] = t; renderList(); }
+  function toIcon(file, done) {
+    const r = new FileReader();
+    r.onload = function () {
+      const img = new Image();
+      img.onload = function () {
+        const s = 192, c = document.createElement("canvas"); c.width = c.height = s;
+        const m = Math.min(img.width, img.height);
+        c.getContext("2d").drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, s, s);
+        done(c.toDataURL("image/png"));
+      };
+      img.onerror = function () { done(null); };
+      img.src = r.result;
+    };
+    r.onerror = function () { done(null); };
+    r.readAsDataURL(file);
+  }
+
+  function renderList() {
+    list.textContent = "";
+    if (mode === "apps") {
+      hint.textContent = "↑↓で並べ替え。8個ごとに次のページ（横スワイプ）になります。画像は正方形のものがきれいです。";
+      dApps.forEach(function (a, i) {
+        const item = el("div", "item");
+        item.appendChild(appIcon(a));
+        const f = el("div", "fields");
+        const name = el("input"); name.id = "an" + i; name.value = a.name; name.placeholder = "名前"; name.setAttribute("aria-label", "名前");
+        name.addEventListener("input", function () { a.name = name.value; });
+        const sel = el("select"); sel.id = "ap" + i; sel.setAttribute("aria-label", "よく使うアプリから選ぶ");
+        sel.appendChild(new Option("よく使うアプリから選ぶ", ""));
+        PRESETS.forEach(function (p) { sel.appendChild(new Option(p.label, p.label)); });
+        sel.addEventListener("change", function () {
+          const p = preset(sel.value); if (!p) return;
+          a.name = p.name; a.href = p.href; a.icon = p.icon; renderList();
+        });
+        const url = el("input", "full"); url.id = "au" + i; url.value = a.href; url.placeholder = "開くリンク（https://〜 や shortcuts:// など）"; url.setAttribute("aria-label", "開くリンク");
+        url.addEventListener("input", function () { a.href = url.value.trim(); });
+        const icSel = el("select"); icSel.id = "ai" + i; icSel.setAttribute("aria-label", "アイコンの絵柄");
+        Object.keys(ICONS).forEach(function (k) { icSel.appendChild(new Option("絵柄：" + ICONS[k].label, k)); });
+        icSel.value = ICONS[a.icon] ? a.icon : "web";
+        icSel.disabled = !!a.img;
+        icSel.addEventListener("change", function () { a.icon = icSel.value; renderList(); });
+        const pick = el("label", "sbtn", "画像を選ぶ");
+        const file = el("input"); file.type = "file"; file.accept = "image/*"; file.hidden = true; file.id = "af" + i;
+        pick.appendChild(file);
+        file.addEventListener("change", function () {
+          if (!file.files || !file.files[0]) return;
+          toIcon(file.files[0], function (data) {
+            if (!data) { setStatus("この画像は読み込めませんでした。別の画像を選んでください。"); return; }
+            a.img = data; renderList();
+          });
+        });
+        const btns = el("div", "btns");
+        btns.appendChild(sbtn("↑", function () { move(dApps, i, -1); }, { disabled: i === 0, label: "前へ移動" }));
+        btns.appendChild(sbtn("↓", function () { move(dApps, i, 1); }, { disabled: i === dApps.length - 1, label: "後ろへ移動" }));
+        btns.appendChild(pick);
+        if (a.img) btns.appendChild(sbtn("画像を外す", function () { a.img = ""; renderList(); }));
+        btns.appendChild(sbtn("削除", function () { dApps.splice(i, 1); renderList(); }, { danger: true }));
+        f.appendChild(name); f.appendChild(sel); f.appendChild(url); f.appendChild(icSel);
+        f.appendChild(btns);
+        item.appendChild(f);
+        list.appendChild(item);
+      });
+      addBtn.textContent = "＋ アプリを追加";
+      addBtn.disabled = dApps.length >= MAX_APPS;
+    } else if (mode === "bg") {
+      hint.textContent = "好きな写真を背景にできます。文字が読みにくいときは「暗さ」を上げてください。";
+      const wrap = el("div", "bg-edit");
+      const prev = el("div", "bg-prev");
+      const paint = function () {
+        prev.style.backgroundImage = dBg.img ? 'url("' + dBg.img + '")' : "";
+        prev.style.setProperty("--dim", String(dBg.dim));
+      };
+      const side = el("div", "bg-side");
+      const btns = el("div", "btns");
+      const pick = el("label", "sbtn", "写真を選ぶ");
+      const file = el("input"); file.type = "file"; file.accept = "image/*"; file.hidden = true; file.id = "bgFile";
+      pick.appendChild(file);
+      file.addEventListener("change", function () {
+        if (!file.files || !file.files[0]) return;
+        setStatus("読み込み中…");
+        toBg(file.files[0], function (data) {
+          if (!data) { setStatus("この写真は読み込めませんでした。別の写真を選んでください。"); return; }
+          dBg.img = data; resetStatus(); renderList();
+        });
+      });
+      btns.appendChild(pick);
+      if (dBg.img) btns.appendChild(sbtn("背景を外す", function () { dBg.img = ""; renderList(); }, { danger: true }));
+      const rl = el("label", "range");
+      const rt = el("span", null, "暗さ " + Math.round(dBg.dim * 100) + "%");
+      const range = el("input"); range.type = "range"; range.id = "bgDim"; range.min = "0"; range.max = "75"; range.step = "5";
+      range.value = String(Math.round(dBg.dim * 100));
+      range.addEventListener("input", function () { dBg.dim = Number(range.value) / 100; rt.textContent = "暗さ " + range.value + "%"; paint(); });
+      rl.appendChild(rt); rl.appendChild(range);
+      side.appendChild(btns); side.appendChild(rl);
+      side.appendChild(el("p", "note", "横長の写真がきれいに収まります。写真はこのiPhoneの中にだけ保存されます。"));
+      wrap.appendChild(prev); wrap.appendChild(side);
+      list.appendChild(wrap);
+      paint();
+    } else {
+      hint.textContent = "住所か施設名を入れると、タップでGoogle マップのナビが始まります。最大" + MAX_DESTS + "か所まで。";
+      dDests.forEach(function (d, i) {
+        const item = el("div", "item");
+        item.appendChild(destDot(d));
+        const f = el("div", "fields");
+        const name = el("input"); name.id = "dn" + i; name.value = d.name; name.placeholder = "名前（例：自宅）"; name.setAttribute("aria-label", "名前");
+        name.addEventListener("input", function () { d.name = name.value; });
+        const icSel = el("select"); icSel.id = "di" + i; icSel.setAttribute("aria-label", "アイコン");
+        Object.keys(DEST_ICONS).forEach(function (k) { icSel.appendChild(new Option("アイコン：" + DEST_ICONS[k].label, k)); });
+        icSel.value = DEST_ICONS[d.icon] ? d.icon : "pin";
+        icSel.addEventListener("change", function () { d.icon = icSel.value; renderList(); });
+        const addr = el("input", "full"); addr.id = "da" + i; addr.value = d.addr; addr.placeholder = "住所・施設名"; addr.setAttribute("aria-label", "住所・施設名");
+        addr.addEventListener("input", function () { d.addr = addr.value.trim(); });
+        const btns = el("div", "btns");
+        btns.appendChild(sbtn("↑", function () { move(dDests, i, -1); }, { disabled: i === 0, label: "前へ移動" }));
+        btns.appendChild(sbtn("↓", function () { move(dDests, i, 1); }, { disabled: i === dDests.length - 1, label: "後ろへ移動" }));
+        btns.appendChild(sbtn("削除", function () { dDests.splice(i, 1); renderList(); }, { danger: true }));
+        f.appendChild(name); f.appendChild(icSel); f.appendChild(addr); f.appendChild(btns);
+        item.appendChild(f);
+        list.appendChild(item);
+      });
+      addBtn.textContent = "＋ 場所を追加";
+      addBtn.disabled = dDests.length >= MAX_DESTS;
+    }
+    addBtn.hidden = mode === "bg";
+  }
+  function setStatus(msg) {
+    statusEl.textContent = msg;
+  }
+  function resetStatus() {
+    statusEl.textContent = "";
+    statusEl.appendChild(resetBtn);
+  }
+  const resetBtn = document.getElementById("resetAll");
+  resetBtn.addEventListener("click", function () {
+    if (mode === "apps") dApps = clone(DEFAULT_APPS);
+    else if (mode === "bg") dBg = { img: "", dim: .35 };
+    else dDests = clone(DEFAULT_DESTS);
+    renderList();
+  });
+  function setMode(m) {
+    mode = m;
+    tabApps.setAttribute("aria-selected", String(m === "apps"));
+    tabDests.setAttribute("aria-selected", String(m === "dests"));
+    tabBg.setAttribute("aria-selected", String(m === "bg"));
+    renderList();
+  }
+  tabApps.addEventListener("click", function () { setMode("apps"); });
+  tabDests.addEventListener("click", function () { setMode("dests"); });
+  tabBg.addEventListener("click", function () { setMode("bg"); });
+  addBtn.addEventListener("click", function () {
+    if (mode === "apps") dApps.push({ name: "", href: "", icon: "web", img: "" });
+    else dDests.push({ name: "", addr: "", icon: "pin" });
+    renderList();
+    const last = list.lastElementChild; if (last) { last.scrollIntoView({ block: "nearest" }); const inp = last.querySelector("input"); if (inp) inp.focus(); }
+  });
+  function openSheet(m) {
+    dApps = clone(apps); dDests = clone(dests); dBg = clone(bgSet);
+    resetStatus();
+    sheet.hidden = false;
+    setMode(m || "apps");
+  }
+  document.getElementById("cancel").addEventListener("click", function () { sheet.hidden = true; });
+  document.getElementById("editForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    apps = dApps.map(function (a) { return { name: (a.name || "").trim(), href: (a.href || "").trim(), icon: a.icon, img: a.img || "" }; });
+    dests = dDests.map(function (d) { return { name: (d.name || "").trim(), addr: (d.addr || "").trim(), icon: d.icon }; });
+    bgSet = { img: dBg.img || "", dim: dBg.dim };
+    const ok = store(AKEY, apps) && store(DKEY, dests) && storeObj(BKEY, bgSet);
+    renderApps(); renderDests(); applyBg();
+    if (!ok) { setStatus("このブラウザでは保存できませんでした。画像を減らすか、保存を許可してください。"); return; }
+    sheet.hidden = true;
+  });
+
+  renderApps(); renderDests(); applyBg();
+})();
+</script>
+
+</body>
+</html>
