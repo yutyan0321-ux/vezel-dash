@@ -9,6 +9,9 @@ on:
       - ".github/workflows/ios.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
@@ -47,3 +50,10 @@ jobs:
           name: VezelDash-ipa
           path: VezelDash.ipa
           retention-days: 30
+
+      - name: リリースに置く（いつも同じリンクで落とせるように）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest VezelDash.ipa --title "ダッシュ 最新版" --notes "PCでVezelDash.ipaをダウンロードして、Sideloadlyで入れてください。"
