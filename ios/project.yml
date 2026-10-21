@@ -25,6 +25,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSLocationWhenInUseUsageDescription: 速度の表示と、現在地の天気の取得に使います。
+        NSCameraUsageDescription: 背景やアイコンに使う写真を撮るときに使います。
+        NSPhotoLibraryUsageDescription: 背景やアイコンに使う写真を選ぶときに使います。
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UIStatusBarHidden: true
