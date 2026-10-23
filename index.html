@@ -77,11 +77,11 @@ button { font: inherit; color: inherit; }
 }
 .clock {
   font-family: var(--font-num); font-weight: 600;
-  font-size: clamp(38px, 12vmin, 88px); line-height: .95;
+  font-size: clamp(30px, min(12vmin, 21cqw), 88px); line-height: .95;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .date { font-size: clamp(13px, 3.4vmin, 19px); font-weight: 500; margin-top: 2px; white-space: nowrap; }
-.when { min-width: 0; }
+.when { min-width: 0; container-type: inline-size; }
 .clock-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .sys { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding-top: 4px; flex: none; font: 600 12px var(--font-ui); color: var(--fg); opacity: .9; white-space: nowrap; }
 .net { font-family: var(--font-num); font-size: 13px; font-weight: 700; letter-spacing: .02em; }
@@ -258,6 +258,7 @@ button { font: inherit; color: inherit; }
 .linkish { background: none; border: 0; color: var(--muted); font-size: 12px; text-decoration: underline; cursor: pointer; padding: 0; }
 
 .portrait-hint { display: none; }
+.ext .dest.edit, .ext #wake, .ext .pager { display: none !important; }
 
 @media (max-height: 380px) {
   :root { --gap: 10px; }
@@ -407,6 +408,9 @@ button { font: inherit; color: inherit; }
   }
   // iPhoneアプリ版の中で動いているとき（アプリ側が true にする）
   const NATIVE = !!window.__NATIVE_APP__;
+  // ナビ（HDMI）側に直接出している画面：タッチできないので編集などのボタンは出さない
+  const EXTERNAL = !!window.__EXTERNAL_DISPLAY__;
+  if (EXTERNAL) document.documentElement.classList.add("ext");
 
   // ---------- 通信の種類とバッテリー（アプリ版でアプリ側から届く） ----------
   function showStatus(net, level, charging) {
@@ -876,6 +880,7 @@ button { font: inherit; color: inherit; }
     const ok = store(AKEY, apps) && store(DKEY, dests) && storeObj(BKEY, bgSet);
     renderApps(); renderDests(); applyBg();
     if (!ok) { setStatus("このブラウザでは保存できませんでした。画像を減らすか、保存を許可してください。"); return; }
+    if (NATIVE) { try { window.webkit.messageHandlers.native.postMessage({ type: "saved" }); } catch (err) {} }
     sheet.hidden = true;
   });
 

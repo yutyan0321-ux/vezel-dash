@@ -29,6 +29,8 @@ targets:
         NSPhotoLibraryUsageDescription: 背景やアイコンに使う写真を選ぶときに使います。
         UILaunchScreen: {}
         UIRequiresFullScreen: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
         UIStatusBarHidden: true
         UIViewControllerBasedStatusBarAppearance: true
         UISupportedInterfaceOrientations:
