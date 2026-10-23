@@ -127,7 +127,28 @@ button { font: inherit; color: inherit; }
 .pill.chip[aria-pressed="true"] { color: var(--amber); background: rgba(255,180,60,.12); }
 
 /* App icons: paged, row-major 4×2 per page, no tile boxes */
+.main-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+.main-col .grid-wrap { flex: 1 1 auto; }
 .grid-wrap { position: relative; min-width: 0; min-height: 0; }
+/* News strip: one short headline at a time */
+.news {
+  flex: none; display: flex; align-items: center; gap: 10px; min-width: 0;
+  min-height: 38px; padding: 0 14px 0 6px; border-radius: 999px;
+  color: var(--fg); text-decoration: none;
+}
+.news-tag {
+  flex: none; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  color: #1d1304; background: var(--amber); border-radius: 999px; padding: 4px 9px;
+}
+.news-text {
+  flex: 1 1 auto; min-width: 0; font-size: clamp(13px, 3.6vmin, 17px); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: opacity .35s ease;
+}
+.news-text.fade { opacity: 0; }
+.news-count { flex: none; font-family: var(--font-num); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (max-height: 260px) { .news { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { .news-text { transition: none; } }
 .grid {
   height: 100%;
   display: grid;
@@ -332,9 +353,16 @@ button { font: inherit; color: inherit; }
     </div>
   </section>
 
-  <div class="grid-wrap">
-    <nav class="grid" id="grid" aria-label="アプリ"></nav>
-    <div class="pager" id="pager" aria-hidden="true"></div>
+  <div class="main-col">
+    <a class="news glass" id="news" href="#" hidden aria-live="polite">
+      <span class="news-tag">ニュース</span>
+      <span class="news-text" id="newsText"></span>
+      <span class="news-count" id="newsCount"></span>
+    </a>
+    <div class="grid-wrap">
+      <nav class="grid" id="grid" aria-label="アプリ"></nav>
+      <div class="pager" id="pager" aria-hidden="true"></div>
+    </div>
   </div>
 
   <div class="dock glass" id="dock" aria-label="よく行く場所"></div>
@@ -431,12 +459,47 @@ button { font: inherit; color: inherit; }
     sys.hidden = false;
   }
   window.__nativeStatus = showStatus;
+
+  // ---------- ニュース（アプリ版でアプリ側から見出しが届く） ----------
+  let newsItems = [], newsIdx = 0, newsTimer = null;
+  function showNews(i) {
+    const box = document.getElementById("news"), txt = document.getElementById("newsText");
+    if (!newsItems.length) { box.hidden = true; return; }
+    newsIdx = (i + newsItems.length) % newsItems.length;
+    const it = newsItems[newsIdx];
+    txt.classList.add("fade");
+    setTimeout(function () {
+      txt.textContent = it.title;
+      box.setAttribute("href", it.link || "#");
+      document.getElementById("newsCount").textContent = (newsIdx + 1) + "/" + newsItems.length;
+      txt.classList.remove("fade");
+    }, 350);
+    box.hidden = false;
+  }
+  window.__nativeNews = function (items) {
+    newsItems = (items || []).filter(function (x) { return x && x.title; });
+    clearInterval(newsTimer);
+    showNews(0);
+    if (newsItems.length > 1) newsTimer = setInterval(function () { showNews(newsIdx + 1); }, 8000);
+  };
   function nativeOpen(app, web) {
     try { window.webkit.messageHandlers.native.postMessage({ type: "open", app: app || "", web: web || "" }); } catch (e) {}
   }
   const EMBEDDED = (function () { try { return window.top !== window.self; } catch (e) { return true; } })();
   // claudeのプレビューでは配置確認用の見本を表示
-  if (!NATIVE && EMBEDDED) showStatus("5G", 0.82, false);
+  if (!NATIVE && EMBEDDED) {
+    showStatus("5G", 0.82, false);
+    window.__nativeNews([
+      { title: "（例）ここに主要ニュースの見出しが出ます", link: "" },
+      { title: "（例）見出しは8秒ごとに切り替わります", link: "" },
+      { title: "（例）タップで記事を開きます", link: "" }
+    ]);
+  }
+  document.getElementById("news").addEventListener("click", function (e) {
+    const href = this.getAttribute("href");
+    if (!href || href === "#") { e.preventDefault(); return; }
+    if (NATIVE) { e.preventDefault(); nativeOpen("", href); }
+  });
   // タップされたら、まずアプリを直接開く。アプリが開かなかったときだけWeb版へ。
   function openDirect(e) {
     const a = e.currentTarget, scheme = a.dataset.app;

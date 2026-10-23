@@ -79,6 +79,9 @@ final class Hub: NSObject, CLLocationManagerDelegate {
     private let views = NSHashTable<WKWebView>.weakObjects()
     private var externalViews = NSHashTable<WKWebView>.weakObjects()
     private var active = false
+    private var lastNewsJS: String?
+    private var newsFetchedAt: Date?
+    private var newsTimer: Timer?
 
     private override init() {
         super.init()
@@ -114,13 +117,64 @@ final class Hub: NSObject, CLLocationManagerDelegate {
     func setActive(_ on: Bool) {
         active = on
         UIApplication.shared.isIdleTimerDisabled = on
-        if on { startLocationIfAllowed(); pushStatus() } else { location.stopUpdatingLocation() }
+        if on {
+            startLocationIfAllowed(); pushStatus()
+            refreshNewsIfNeeded()
+            newsTimer?.invalidate()
+            newsTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                self?.refreshNewsIfNeeded()
+            }
+        } else {
+            location.stopUpdatingLocation()
+            newsTimer?.invalidate(); newsTimer = nil
+        }
+    }
+
+    // MARK: ニュース（Yahoo!ニュース トピックス 主要。取れなければNHKの主要ニュース）
+
+    private let newsFeeds = [
+        "https://news.yahoo.co.jp/rss/topics/top-picks.xml",
+        "https://www3.nhk.or.jp/rss/news/cat0.xml"
+    ]
+
+    /// 15分ごとに最新の見出しを取り直す
+    private func refreshNewsIfNeeded() {
+        if let at = newsFetchedAt, Date().timeIntervalSince(at) < 15 * 60 { return }
+        newsFetchedAt = Date()
+        fetchNews(from: 0)
+    }
+
+    private func fetchNews(from index: Int) {
+        guard index < newsFeeds.count, let url = URL(string: newsFeeds[index]) else {
+            newsFetchedAt = nil   // 全部失敗したら、次の1分後にもう一度試す
+            return
+        }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        req.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+                     forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
+            let items = data.map { RSSParser.parse($0) } ?? []
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if items.isEmpty { self.fetchNews(from: index + 1); return }
+                self.sendNews(items)
+            }
+        }.resume()
+    }
+
+    private func sendNews(_ items: [[String: String]]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: Array(items.prefix(10))),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let js = "window.__nativeNews && window.__nativeNews(\(json))"
+        lastNewsJS = js
+        broadcast(js)
     }
 
     /// ページの読み込みが終わったとき、最新の値をすぐ渡す
     func pageLoaded(_ web: WKWebView) {
         web.evaluateJavaScript(statusJS(), completionHandler: nil)
         if let js = lastPosJS { web.evaluateJavaScript(js, completionHandler: nil) }
+        if let js = lastNewsJS { web.evaluateJavaScript(js, completionHandler: nil) }
         if location.authorizationStatus == .denied || location.authorizationStatus == .restricted {
             web.evaluateJavaScript("window.__nativeNoGps && window.__nativeNoGps()", completionHandler: nil)
         }
@@ -188,6 +242,46 @@ final class Hub: NSObject, CLLocationManagerDelegate {
     }
 
     @objc func pushStatus() { broadcast(statusJS()) }
+}
+
+/// RSSから記事の見出しとリンクを取り出す
+final class RSSParser: NSObject, XMLParserDelegate {
+    private var items: [[String: String]] = []
+    private var current: [String: String]?
+    private var text = ""
+
+    static func parse(_ data: Data) -> [[String: String]] {
+        let p = RSSParser()
+        let parser = XMLParser(data: data)
+        parser.delegate = p
+        parser.parse()
+        return p.items
+    }
+
+    func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?,
+                qualifiedName: String?, attributes: [String: String] = [:]) {
+        if name == "item" { current = [:] }
+        text = ""
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) { text += string }
+
+    func parser(_ parser: XMLParser, foundCDATA block: Data) {
+        if let s = String(data: block, encoding: .utf8) { text += s }
+    }
+
+    func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if current != nil {
+            if name == "title" { current?["title"] = value }
+            if name == "link" { current?["link"] = value }
+            if name == "item" {
+                if let c = current, let t = c["title"], !t.isEmpty { items.append(c) }
+                current = nil
+            }
+        }
+        text = ""
+    }
 }
 
 /// WKScriptMessageHandler を弱参照で持つための仲介役（循環参照を防ぐ）
